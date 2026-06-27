@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>レシート整理（試作品）</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --card:#ffffff; --line:#e3e6ea; --ink:#1f2733;
+    --muted:#6b7480; --accent:#3a6ea5; --accent-soft:#eaf1f8;
+    --warn:#b4690e; --warn-soft:#fcf3e3; --ok:#2f7d4f; --ok-soft:#e9f4ee;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,"Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-serif;
+    background:var(--bg);color:var(--ink);line-height:1.6;font-size:14px}
+  header{background:var(--card);border-bottom:1px solid var(--line);padding:16px 24px}
+  header h1{margin:0;font-size:18px}
+  header p{margin:4px 0 0;color:var(--muted);font-size:12.5px}
+  .badge{display:inline-block;background:var(--accent-soft);color:var(--accent);
+    border-radius:999px;padding:2px 10px;font-size:11.5px;margin-left:8px;vertical-align:middle}
+  main{max-width:1040px;margin:0 auto;padding:20px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+    padding:18px;margin-bottom:18px}
+  .card h2{margin:0 0 12px;font-size:15px}
+  /* 資料を入れる場所 */
+  .drop{border:2px dashed var(--line);border-radius:10px;padding:26px;text-align:center;
+    color:var(--muted);cursor:pointer;transition:.15s;background:#fafbfc}
+  .drop.over{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+  .drop strong{display:block;color:var(--ink);font-size:14px;margin-bottom:4px}
+  .drop small{font-size:11.5px}
+  /* ツールバー */
+  .toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px}
+  .toolbar .spacer{flex:1}
+  .switch{display:inline-flex;align-items:center;gap:8px;cursor:pointer;user-select:none;
+    background:#fafbfc;border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:13px}
+  .switch input{display:none}
+  .track{width:38px;height:22px;background:#cdd3da;border-radius:999px;position:relative;transition:.15s}
+  .track::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;
+    background:#fff;border-radius:50%;transition:.15s}
+  .switch input:checked + .track{background:var(--warn)}
+  .switch input:checked + .track::after{transform:translateX(16px)}
+  button{font-family:inherit;font-size:13px;border-radius:8px;padding:8px 14px;cursor:pointer;
+    border:1px solid var(--line);background:#fff;color:var(--ink);transition:.12s}
+  button:hover{background:#f0f2f5}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  button.primary:hover{filter:brightness(1.06)}
+  /* テーブル */
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:10px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:12px;white-space:nowrap}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  tr.flagged{background:var(--warn-soft)}
+  .pill{display:inline-block;border-radius:999px;padding:2px 9px;font-size:11.5px;white-space:nowrap}
+  .pill.warn{background:var(--warn-soft);color:var(--warn)}
+  .pill.ok{background:var(--ok-soft);color:var(--ok)}
+  .reason{color:var(--warn);font-size:11.5px;display:block;margin-top:2px}
+  .count{color:var(--muted);font-size:12px}
+  .empty{text-align:center;color:var(--muted);padding:24px}
+  /* モーダル */
+  .overlay{position:fixed;inset:0;background:rgba(20,26,33,.45);display:none;
+    align-items:center;justify-content:center;padding:20px;z-index:10}
+  .overlay.show{display:flex}
+  .modal{background:#fff;border-radius:12px;max-width:620px;width:100%;max-height:86vh;
+    overflow:auto;padding:20px}
+  .modal h3{margin:0 0 4px;font-size:16px}
+  .modal .sub{color:var(--muted);font-size:12px;margin:0 0 14px}
+  textarea{width:100%;min-height:230px;font-family:ui-monospace,Menlo,Consolas,monospace;
+    font-size:12.5px;line-height:1.6;border:1px solid var(--line);border-radius:8px;padding:12px;resize:vertical}
+  .modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:14px}
+  .note{background:var(--accent-soft);border-radius:8px;padding:10px 12px;font-size:12px;
+    color:#34506b;margin-top:14px}
+  .copied{color:var(--ok);font-size:12px;align-self:center;margin-right:auto;display:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>レシート整理 <span class="badge">試作品 / サンプルデータ</span></h1>
+  <p>画面と動きを確認するためのたたき台です。送信・削除・会計判断・税務判断の機能は含みません。</p>
+</header>
+
+<main>
+  <!-- ① 資料を入れる場所 -->
+  <section class="card">
+    <h2>① 資料を入れる場所</h2>
+    <div id="drop" class="drop">
+      <strong>ここにレシート画像やPDFをドラッグ、またはクリックして選択</strong>
+      <small>※ 試作品のため、選んだファイルは一覧に「未確認」の行として仮置きされるだけです（保存・送信はしません）</small>
+    </div>
+    <input id="file" type="file" multiple accept="image/*,.pdf" style="display:none">
+  </section>
+
+  <!-- ② 一覧で見る表 / ③ 要確認だけ切替 -->
+  <section class="card">
+    <h2>② 一覧で見る表</h2>
+    <div class="toolbar">
+      <label class="switch">
+        <input id="onlyFlag" type="checkbox">
+        <span class="track"></span>
+        <span>③ 要確認だけ表示</span>
+      </label>
+      <span id="count" class="count"></span>
+      <span class="spacer"></span>
+      <button id="btnConfirm">④ 確認依頼文を作る</button>
+      <button id="btnReport" class="primary">⑤ 月次報告を作る</button>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>日付</th><th>店名・宛先</th><th class="num">金額</th>
+          <th>区分(メモ)</th><th>状態</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div id="empty" class="empty" style="display:none">表示できる項目がありません。</div>
+  </section>
+</main>
+
+<!-- モーダル -->
+<div id="overlay" class="overlay">
+  <div class="modal">
+    <h3 id="mTitle"></h3>
+    <p id="mSub" class="sub"></p>
+    <textarea id="mText" readonly></textarea>
+    <div id="mNote" class="note"></div>
+    <div class="modal-actions">
+      <span id="copied" class="copied">コピーしました</span>
+      <button id="mCopy">本文をコピー</button>
+      <button id="mClose" class="primary">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ===== サンプルデータ（試作用・架空） =====
+   status: "ok"（確認済み）/ "flag"（要確認）。これは入力内容の不足を示す手動フラグで、
+   会計区分や税務上の判断は一切していません。reason は「読み取れない/不足している」事実のみ。*/
+let data = [
+  {date:"2026-06-03", payee:"みなと珈琲店",     amount:680,   memo:"打合せ",       status:"ok",   reason:""},
+  {date:"2026-06-05", payee:"さくら文具",       amount:2480,  memo:"事務用品",     status:"ok",   reason:""},
+  {date:"2026-06-09", payee:"（読み取れず）",   amount:null,  memo:"タクシー",     status:"flag", reason:"金額・店名が読み取れません"},
+  {date:"2026-06-12", payee:"大空ガソリン",     amount:5200,  memo:"交通",         status:"ok",   reason:""},
+  {date:"2026-06-15", payee:"ひかりブックス",   amount:1320,  memo:"資料",         status:"ok",   reason:""},
+  {date:"2026-06-18", payee:"やまと食堂",       amount:1100,  memo:"",             status:"flag", reason:"用途メモが未記入です"},
+  {date:"2026-06-21", payee:"クラウド月額",     amount:1980,  memo:"通信",         status:"ok",   reason:""},
+  {date:"2026-06-24", payee:"（日付不明）",     amount:3400,  memo:"備品",         status:"flag", reason:"日付が判別できません"},
+];
+
+const yen = n => n==null ? "—" : "¥" + n.toLocaleString("ja-JP");
+const rowsEl = document.getElementById("rows");
+const emptyEl = document.getElementById("empty");
+const countEl = document.getElementById("count");
+const onlyFlag = document.getElementById("onlyFlag");
+
+function visibleData(){
+  return onlyFlag.checked ? data.filter(r=>r.status==="flag") : data;
+}
+
+function render(){
+  const list = visibleData();
+  rowsEl.innerHTML = "";
+  list.forEach(r=>{
+    const tr = document.createElement("tr");
+    if(r.status==="flag") tr.className="flagged";
+    tr.innerHTML = `
+      <td>${r.date}</td>
+      <td>${r.payee}${r.reason?`<span class="reason">▲ ${r.reason}</span>`:""}</td>
+      <td class="num">${yen(r.amount)}</td>
+      <td>${r.memo||'<span style="color:#9aa3ad">（未記入）</span>'}</td>
+      <td>${r.status==="flag"
+            ? '<span class="pill warn">要確認</span>'
+            : '<span class="pill ok">確認済み</span>'}</td>`;
+    rowsEl.appendChild(tr);
+  });
+  emptyEl.style.display = list.length ? "none" : "block";
+  const flagCount = data.filter(r=>r.status==="flag").length;
+  countEl.textContent = `全 ${data.length} 件中、要確認 ${flagCount} 件`;
+}
+
+onlyFlag.addEventListener("change", render);
+
+/* ① 資料投入（試作：行を仮置きするだけ。保存も送信もしない） */
+const drop = document.getElementById("drop");
+const fileInput = document.getElementById("file");
+drop.addEventListener("click", ()=>fileInput.click());
+["dragover","dragenter"].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.add("over")}));
+["dragleave","drop"].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.remove("over")}));
+drop.addEventListener("drop", ev=>addFiles(ev.dataTransfer.files));
+fileInput.addEventListener("change", ()=>addFiles(fileInput.files));
+function addFiles(files){
+  [...files].forEach(f=>{
+    data.unshift({
+      date:"（未入力）", payee:f.name, amount:null, memo:"",
+      status:"flag", reason:"取り込んだばかりです。日付・金額・用途を確認してください"
+    });
+  });
+  fileInput.value="";
+  render();
+}
+
+/* モーダル共通 */
+const overlay=document.getElementById("overlay");
+const mTitle=document.getElementById("mTitle"), mSub=document.getElementById("mSub");
+const mText=document.getElementById("mText"), mNote=document.getElementById("mNote");
+const copied=document.getElementById("copied");
+function openModal(title,sub,text,note){
+  mTitle.textContent=title; mSub.textContent=sub; mText.value=text;
+  mNote.textContent=note; copied.style.display="none";
+  overlay.classList.add("show");
+}
+document.getElementById("mClose").addEventListener("click",()=>overlay.classList.remove("show"));
+overlay.addEventListener("click",e=>{if(e.target===overlay)overlay.classList.remove("show")});
+document.getElementById("mCopy").addEventListener("click",()=>{
+  mText.select(); document.execCommand("copy");
+  copied.style.display="inline"; window.getSelection().removeAllRanges();
+});
+
+/* ④ 確認依頼文を作る（下書きを表示するだけ。送信はしない） */
+document.getElementById("btnConfirm").addEventListener("click",()=>{
+  const flagged = data.filter(r=>r.status==="flag");
+  let body;
+  if(flagged.length===0){
+    body = "お疲れさまです。\n\n現在、要確認のレシートはありません。\n\nどうぞよろしくお願いいたします。";
+  }else{
+    const lines = flagged.map((r,i)=>
+      `${i+1}. ${r.date}　${r.payee}　${yen(r.amount)}\n   確認したい点：${r.reason}`
+    ).join("\n");
+    body =
+`お疲れさまです。
+
+下記のレシートについて、内容のご確認をお願いできますでしょうか。
+（不足している情報を教えていただきたいだけで、処理や判断はこちらでは行いません）
+
+${lines}
+
+お手数ですが、ご確認のほどよろしくお願いいたします。`;
+  }
+  openModal("④ 確認依頼の下書き",
+    `要確認 ${flagged.length} 件分の文面を作成しました（送信はしません）`,
+    body,
+    "これは下書きです。内容を確認し、ご自身でメール等に貼り付けてお使いください。");
+});
+
+/* ⑤ 月次報告を作る（件数と合計の集計のみ。会計・税務の判断はしない） */
+document.getElementById("btnReport").addEventListener("click",()=>{
+  const ym = "2026-06";
+  const month = data.filter(r=>r.date.startsWith(ym));
+  const withAmt = month.filter(r=>typeof r.amount==="number");
+  const total = withAmt.reduce((s,r)=>s+r.amount,0);
+  const flagged = month.filter(r=>r.status==="flag");
+
+  // 区分メモごとの単純集計（金額のあるものだけ。あくまで集計で判断ではありません）
+  const byMemo={};
+  withAmt.forEach(r=>{const k=r.memo||"（未記入）"; byMemo[k]=(byMemo[k]||0)+r.amount;});
+  const memoLines = Object.entries(byMemo)
+    .sort((a,b)=>b[1]-a[1])
+    .map(([k,v])=>`  ・${k}：${yen(v)}`).join("\n");
+
+  const body =
+`■ 月次報告（${ym}）　※試作・サンプル
+
+件数：${month.length} 件
+　うち金額の記録あり：${withAmt.length} 件
+　うち要確認：${flagged.length} 件
+
+金額合計（記録ありのみの単純合計）：${yen(total)}
+
+メモ区分ごとの合計：
+${memoLines}
+
+要確認として残っている項目：
+${flagged.length? flagged.map(r=>`  ・${r.date} ${r.payee}（${r.reason}）`).join("\n") : "  なし"}
+
+― 以上 ―`;
+
+  openModal("⑤ 月次報告の下書き",
+    `${ym} の件数と合計をまとめました（送信はしません）`,
+    body,
+    "金額は記録されている数字を足し合わせただけの集計です。経費区分や税務上の扱いの判断は含みません。");
+});
+
+render();
+</script>
+</body>
+</html>
